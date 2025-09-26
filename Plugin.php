@@ -75,7 +75,7 @@ class Cap_Plugin implements PluginInterface
         \Typecho\Plugin::factory('Widget\Feedback')->comment = [__CLASS__, 'verifyCap_comment'];
         \Typecho\Plugin::factory('Widget\Archive')->header = [__CLASS__, 'header'];
         \Typecho\Plugin::factory('admin/footer.php')->end = [__CLASS__, 'output_login'];
-        \Typecho\Plugin::factory('Widget\User')->hashValidate = [__CLASS__, 'verifyCap_login'];
+        \Typecho\Plugin::factory('Widget\Login')->login = [__CLASS__, 'verifyCap_beforeLogin'];
     }
 
     /**
@@ -115,7 +115,7 @@ class Cap_Plugin implements PluginInterface
             NULL, 
             'https://captcha.gurl.eu.org/api', 
             _t('Cap API 端点'), 
-            _t('Cap 验证服务的 API 端点地址，例如：https://captcha.gurl.eu.org/api（不要以斜杠结尾）')
+            _t('Cap 验证服务的 API 端点地址，例如：https://captcha.gurl.eu.org/api/')
         );
         
         $scriptUrl = new Text(
@@ -307,9 +307,9 @@ class Cap_Plugin implements PluginInterface
                             const tokenField = form.querySelector('input[name="cap-token"]');
                             
                             if (!tokenField || !tokenField.value) {
-                                console.error('❌ 表单提交失败：未找到 Cap token');
+                                //console.error('❌ 表单提交失败：未找到 Cap token');
                                 e.preventDefault();
-                                alert('请先完成人机验证');
+                               // alert('请先完成人机验证');
                                 return false;
                             }
                             
@@ -391,43 +391,243 @@ class Cap_Plugin implements PluginInterface
             }
 
             $apiEndpoint = rtrim($config->apiEndpoint, '/') . '/';
-            
-            if (empty($apiEndpoint)) {
-                return;
-            }
-
+            $scriptUrl = $config->scriptUrl ?? 'https://captcha.gurl.eu.org/cap.min.js';
             $theme = isset($config->theme) ? $config->theme : 'light';
             
             echo <<<EOF
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    var passwordField = document.getElementById('password');
-                    if (passwordField && passwordField.parentNode) {
-                        var capDiv = document.createElement('div');
-                        capDiv.id = 'cap-widget-login';
-                        capDiv.innerHTML = '<cap-widget id="cap-login" data-cap-api-endpoint="{$apiEndpoint}" data-theme="{$theme}">正在加载验证组件...</cap-widget>';
-                        passwordField.parentNode.insertBefore(capDiv, passwordField.nextSibling);
+<script src="{$scriptUrl}?onload=onloadCapCallback" async defer></script>
+<script>
+// 在页面加载时立即执行，不等待Cap脚本
+(function() {
+    'use strict';
+    
+    let capLoginCompleted = false;
+    let capLoginToken = '';
+    
+    // 立即添加验证码组件
+    document.addEventListener('DOMContentLoaded', function() {
+        const passwordField = document.getElementById('password');
+        if (passwordField && passwordField.parentNode) {
+            passwordField.parentNode.insertAdjacentHTML('afterend', '<div id="cap-widget-login" style="margin: 10px 0;"><cap-widget id="cap-login" data-cap-api-endpoint="{$apiEndpoint}" data-theme="{$theme}">正在加载验证组件...</cap-widget></div>');
+        }
+        
+        // 立即设置表单拦截
+        setupFormInterception();
+    });
+    
+    // 如果DOM已经加载完成，立即执行
+    if (document.readyState === 'loading') {
+        // DOM还在加载中，等待DOMContentLoaded
+    } else {
+        // DOM已经加载完成，立即执行
+        const passwordField = document.getElementById('password');
+        if (passwordField && passwordField.parentNode) {
+            passwordField.parentNode.insertAdjacentHTML('afterend', '<div id="cap-widget-login" style="margin: 10px 0;"><cap-widget id="cap-login" data-cap-api-endpoint="{$apiEndpoint}" data-theme="{$theme}">正在加载验证组件...</cap-widget></div>');
+        }
+        setupFormInterception();
+    }
+    
+    function setupFormInterception() {
+        const loginForm = document.querySelector('form[name="login"]') || document.querySelector('form[role="form"]') || document.querySelector('form');
+        
+        if (loginForm) {
+         
+            
+            // 拦截表单提交
+            loginForm.addEventListener('submit', function(e) {
+              
+                console.log('- capLoginCompleted:', capLoginCompleted);
+                console.log('- capLoginToken:', capLoginToken ? capLoginToken.substring(0, 20) + '...' : 'null');
+                
+                // 检查表单中是否有token
+                const tokenInput = loginForm.querySelector('input[name="cap-token"]');
+                const tokenValue = tokenInput ? tokenInput.value : null;
+                console.log('- 表单中的token:', tokenValue ? tokenValue.substring(0, 20) + '...' : 'null');
+                
+                // 检查是否有有效的token（优先检查表单中的token）
+                if (!tokenValue || tokenValue.length < 10) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    
+                    alert('请先完成人机验证');
+                   
+                    return false;
+                }
+                
+                // 如果JavaScript变量没有更新，但表单中有token，就更新变量
+                if (!capLoginCompleted && tokenValue) {
+                   
+                    capLoginCompleted = true;
+                    capLoginToken = tokenValue;
+                }
+                
+                // 确保token被添加到表单中
+                if (!tokenInput) {
+                    const newTokenInput = document.createElement('input');
+                    newTokenInput.type = 'hidden';
+                    newTokenInput.name = 'cap-token';
+                    newTokenInput.value = capLoginToken || tokenValue;
+                    loginForm.appendChild(newTokenInput);
+                } else if (!tokenInput.value && capLoginToken) {
+                    tokenInput.value = capLoginToken;
+                }
+                
+            
+                return true;
+            }, true); // 使用捕获阶段，确保最先执行
+            
+            // 也监听按钮点击事件作为备用
+            const submitButton = loginForm.querySelector('button[type="submit"]') || loginForm.querySelector('input[type="submit"]');
+            if (submitButton) {
+                submitButton.addEventListener('click', function(e) {
+                   
+                    
+                    if (!capLoginCompleted || !capLoginToken) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
                         
-                        // 监听验证完成事件
-                        const widget = document.querySelector("#cap-login");
-                        if (widget) {
-                            widget.addEventListener("solve", function (e) {
-                                const token = e.detail.token;
-                                // 将 token 添加到登录表单中
-                                let tokenInput = document.querySelector('input[name="cap-token"]');
-                                if (!tokenInput) {
-                                    tokenInput = document.createElement('input');
-                                    tokenInput.type = 'hidden';
-                                    tokenInput.name = 'cap-token';
-                                    passwordField.parentNode.appendChild(tokenInput);
-                                }
-                                tokenInput.value = token;
-                                console.log('Cap 登录验证完成');
-                            });
+                        alert('请先完成人机验证');
+                       
+                        return false;
+                    }
+                }, true);
+            }
+        } else {
+         
+        }
+    }
+    
+    // Cap脚本加载完成后的回调
+    window.onloadCapCallback = function() {
+     
+        
+        // 等待一小段时间确保组件完全初始化
+        setTimeout(function() {
+            const widget = document.querySelector("#cap-login");
+            
+            if (widget) {
+             
+                
+                // 监听验证码完成事件
+                widget.addEventListener("solve", function (e) {
+                    const token = e.detail.token;
+                   
+                    
+                    capLoginCompleted = true;
+                    capLoginToken = token;
+                    
+                    // 将 token 添加到登录表单中
+                    const loginForm = document.querySelector('form[name="login"]') || document.querySelector('form[role="form"]') || document.querySelector('form');
+                    if (loginForm) {
+                        let tokenInput = loginForm.querySelector('input[name="cap-token"]');
+                        if (!tokenInput) {
+                            tokenInput = document.createElement('input');
+                            tokenInput.type = 'hidden';
+                            tokenInput.name = 'cap-token';
+                            loginForm.appendChild(tokenInput);
                         }
+                        tokenInput.value = token;
+                        console.log('✅ Token已添加到表单');
+                    }
+                    
+                    // 添加视觉反馈
+                    const submitButton = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
+                    if (submitButton) {
+                        submitButton.style.backgroundColor = '#28a745';
+                        submitButton.textContent = '登录';
+                        setTimeout(function() {
+                            submitButton.style.backgroundColor = '';
+                            submitButton.textContent = '登录';
+                        }, 2000);
                     }
                 });
-            </script>
+                
+                widget.addEventListener("error", function (e) {
+               
+                    
+                    capLoginCompleted = false;
+                    capLoginToken = '';
+                    
+                    const tokenInput = document.querySelector('input[name="cap-token"]');
+                    if (tokenInput) {
+                        tokenInput.value = '';
+                    }
+                });
+                
+                widget.addEventListener("reset", function (e) {
+                   
+                    
+                    capLoginCompleted = false;
+                    capLoginToken = '';
+                    
+                    const tokenInput = document.querySelector('input[name="cap-token"]');
+                    if (tokenInput) {
+                        tokenInput.value = '';
+                    }
+                });
+                
+                // 检查是否已经有token（页面刷新等情况）
+                const existingTokenInput = document.querySelector('input[name="cap-token"]');
+                if (existingTokenInput && existingTokenInput.value) {
+                    console.log('✅ 发现已存在的token，更新状态');
+                    capLoginCompleted = true;
+                    capLoginToken = existingTokenInput.value;
+                }
+                
+            } else {
+                
+            }
+        }, 100);
+    };
+    
+    // 添加全局状态检查函数，用于调试
+    window.checkCapStatus = function() {
+        console.log('Cap状态检查:');
+        console.log('- capLoginCompleted:', capLoginCompleted);
+        console.log('- capLoginToken:', capLoginToken ? capLoginToken.substring(0, 20) + '...' : 'null');
+        console.log('- 表单中的token:', document.querySelector('input[name="cap-token"]')?.value || 'null');
+    };
+    
+    // 添加定时检查机制，监控表单中token的变化
+    let lastTokenValue = '';
+    setInterval(function() {
+        const tokenInput = document.querySelector('input[name="cap-token"]');
+        const currentTokenValue = tokenInput ? tokenInput.value : '';
+        
+        // 如果发现新的token但JavaScript变量没有更新
+        if (currentTokenValue && currentTokenValue !== lastTokenValue && currentTokenValue.length > 10) {
+            if (!capLoginCompleted || capLoginToken !== currentTokenValue) {
+              
+                
+                capLoginCompleted = true;
+                capLoginToken = currentTokenValue;
+                
+                // 添加视觉反馈
+                const submitButton = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
+                if (submitButton) {
+                    submitButton.style.backgroundColor = '#28a745';
+                    submitButton.textContent = '登录';
+                    setTimeout(function() {
+                        submitButton.style.backgroundColor = '';
+                        submitButton.textContent = '登录';
+                    }, 2000);
+                }
+            }
+            lastTokenValue = currentTokenValue;
+        }
+        
+        // 如果token被清空了，也要更新状态
+        if (!currentTokenValue && capLoginCompleted) {
+       
+            capLoginCompleted = false;
+            capLoginToken = '';
+            lastTokenValue = '';
+        }
+    }, 500); // 每500ms检查一次
+})();
+</script>
 EOF;
         } catch (Exception $e) {
             // 配置未找到时静默处理，不影响登录页面
@@ -473,7 +673,7 @@ EOF;
                     error_log("No cap-related fields found in request");
                 }
                 
-                throw new \Typecho\Plugin\Exception(_t('请完成人机验证后再发布评论（未找到验证token）'));
+                throw new \Typecho\Plugin\Exception(_t('请先完成人机验证'));
             }
             
             $token = trim($_POST['cap-token']);
@@ -519,45 +719,45 @@ EOF;
         }
     }
 
-    public static function verifyCap_login($password, $hash)
+    public static function verifyCap_beforeLogin($name, $password, $remember)
     {
         try {
             $config = Options::alloc()->plugin('Cap');
             $enableCap = in_array('login', $config->enableActions);
             
             if ($enableCap && !self::$rescueMode) {
-                if (isset($_POST['cap-token'])) {
-                    if (empty($_POST['cap-token'])) {
-                        \Widget\Notice::alloc()->set(_t('请先完成验证'), 'error');
-                        Options::alloc()->response->goBack();
-                    }
-                    
-                    $resp = self::validateCapToken($_POST['cap-token']);
-                    
-                    if (!$resp || !isset($resp['success']) || $resp['success'] !== true) {
-                        $errorMsg = self::getCapResultMsg($resp);
-                        self::loginFailed($errorMsg);
-                        return false;
-                    }
-                } else {
+                error_log("=== Cap Login Verification Debug ===");
+                error_log("Username: " . $name);
+                error_log("POST data keys: " . implode(', ', array_keys($_POST)));
+                
+                // 检查是否提交了验证码token（前端已经拦截，这里是双重保险）
+                if (!isset($_POST['cap-token']) || empty($_POST['cap-token'])) {
+                    error_log("❌ cap-token not found or empty in POST data");
                     self::loginFailed('请完成人机验证');
-                    return false;
+                    return;
                 }
+                
+                $token = trim($_POST['cap-token']);
+                error_log("✅ Found cap-token: " . substr($token, 0, 20) . "...");
+                
+                // 验证Cap token
+                error_log("🔍 Starting token validation...");
+                $resp = self::validateCapToken($token);
+                
+                if (!$resp || !isset($resp['success']) || $resp['success'] !== true) {
+                    error_log("❌ Token validation failed: " . json_encode($resp));
+                    $errorMsg = self::getCapResultMsg($resp);
+                    self::loginFailed($errorMsg);
+                    return;
+                }
+                
+                // 人机验证通过
+                error_log("✅ Cap login verification passed");
             }
         } catch (Exception $e) {
             // 配置未找到时跳过验证，不影响登录功能
+            error_log("⚠️ Cap login verification skipped due to configuration error: " . $e->getMessage());
         }
-
-        /**
-         * 参考 /var/Widget/User.php 中的 login 方法
-         */
-        if ('$P$' == substr($hash, 0, 3)) {
-            $hasher = new PasswordHash(8, true);
-            $hashValidate = $hasher->checkPassword($password, $hash);
-        } else {
-            $hashValidate = Common::hashValidate($password, $hash);
-        }
-        return $hashValidate;
     }
 
     private static function loginFailed($msg)

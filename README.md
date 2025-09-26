@@ -2,6 +2,19 @@
 
 一个为 Typecho 博客系统提供 Cap 人机验证功能的插件。
 
+---
+
+![Static Badge](https://img.shields.io/badge/Apache_License-V2.0-green)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/cc2562/Cap_for_Typecho)
+
+Cap 是一个现代、轻量级的开源 SHA-256 工作量证明 CAPTCHA 替代方案。
+
+与传统的 CAPTCHA 不同，Cap：
+- 快速且不显眼
+- 不使用跟踪或 cookies
+- 使用工作量证明而非令人烦恼的视觉谜题
+- 完全可访问且可自托管
+
 ## 功能特性
 
 - 支持在评论和登录页面启用 Cap 验证码
@@ -22,13 +35,18 @@
 ### 必需配置
 
 - **Cap API 端点**: Cap 验证服务的 API 端点地址，默认：`https://captcha.gurl.eu.org/api/`
-- **Cap 脚本地址**: Cap 客户端脚本的 URL 地址，默认：`https://cdn.jsdmirror.com/gh/prosopo/captcha@latest/cap.min.js`（已优化为国内可访问的 CDN）
+- **Cap 脚本地址**: Cap 客户端脚本的 URL 地址，默认：`https://captcha.gurl.eu.org/cap.min.js`
 
 ### 可选配置
 
 - **启用位置**: 选择在登录页面和/或评论页面启用验证
 - **主题**: 选择亮色或暗色主题
 - **使用 cURL**: 推荐启用，需要 PHP cURL 扩展
+
+## 自托管Cap
+Cap支持自托管，你可以查看官方文档自行建立服务器[https://capjs.js.org/guide/server.html](https://capjs.js.org/guide/server.html)
+
+注意本插件不支持Cap Standalone模式。自托管推荐使用Cloudflare一键部署：[https://github.com/xyTom/cap-worker](https://github.com/xyTom/cap-worker)
 
 ## 主题集成
 
@@ -63,8 +81,8 @@
 本插件基于新的 Cap API 规范，使用以下端点：
 
 ### 客户端集成
-- 脚本地址: `https://cdn.jsdmirror.com/gh/prosopo/captcha@latest/cap.min.js`（国内优化 CDN）
-- Widget 配置: `data-cap-api-endpoint="https://captcha.gurl.eu.org/api/"`
+- 脚本地址: `https://captcha.gurl.eu.org/api/`
+- Widget 配置: `data-cap-api-endpoint="https://captcha.gurl.eu.org/cap.min.js"`
 
 ### 服务端验证
 - 验证端点: `POST /api/validate`
@@ -82,12 +100,6 @@
   }
   ```
 
-## 工作原理
-
-1. **客户端**: 用户完成验证后，JavaScript 会生成一个 token
-2. **表单提交**: token 作为隐藏字段 `cap-token` 随表单一起提交
-3. **服务端验证**: 插件调用 `/api/validate` 端点验证 token
-4. **结果处理**: 根据验证结果决定是否允许操作
 
 ## 故障排查
 
@@ -111,26 +123,17 @@
 - 验证完成时会显示 "Cap 验证完成" 或 "Cap 登录验证完成"
 - 可以检查表单中是否正确添加了 `cap-token` 隐藏字段
 
-## 技术支持
+## 鸣谢
 
 - Cap 项目: https://github.com/prosopo/captcha
-- Typecho 官网: https://typecho.org
 
 ## 许可证
 
-本插件基于 AGPL-3.0 许可证发布。
+本插件基于 Apache License Version 2.0 许可证发布。
 
 ## 更新日志
-
-### v2.0.0
-- 适配新的 Cap API 规范
-- 移除对 site_key 和 secret_key 的依赖
-- 使用 token 验证机制
-- 简化配置选项
-- 改进客户端集成方式
 
 ### v1.0.0
 - 初始版本
 - 支持评论和登录验证
 - 支持自定义 Cap Standalone 服务器
-- 支持主题切换和各种配置选项
